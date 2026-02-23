@@ -60,7 +60,9 @@ export function AppSidebar() {
 
   const handleLogout = async () => {
     await db.delete(); // Clear entire database
-    window.location.href = "/";
+    window.location.href = window.location.pathname.startsWith("/nootle")
+      ? "/nootle/"
+      : "/";
   };
 
   const avatarUrl = profile.avatar;
