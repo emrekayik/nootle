@@ -1,0 +1,168 @@
+$ eslint
+
+/Users/emre/Documents/src/next/nootle/src/app/calendar/page.tsx
+   68:28  error    Unexpected any. Specify a different type             @typescript-eslint/no-explicit-any
+  151:13  warning  'endDateTimeStr' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  169:19  error    Unexpected any. Specify a different type             @typescript-eslint/no-explicit-any
+
+/Users/emre/Documents/src/next/nootle/src/app/categories/page.tsx
+   66:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   99:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  114:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  126:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/emre/Documents/src/next/nootle/src/app/drawings/page.tsx
+   12:3   warning  'CardContent' is defined but never used      @typescript-eslint/no-unused-vars
+   15:3   warning  'CardDescription' is defined but never used  @typescript-eslint/no-unused-vars
+   68:28  error    Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+   80:58  error    Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  120:19  error    Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  140:19  error    Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  168:48  error    Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  196:29  error    Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  217:19  error    Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  240:19  error    Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  348:72  error    Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+
+/Users/emre/Documents/src/next/nootle/src/app/notebooks/page.tsx
+   10:10  warning  'Textarea' is defined but never used         @typescript-eslint/no-unused-vars
+   13:3   warning  'CardContent' is defined but never used      @typescript-eslint/no-unused-vars
+   16:3   warning  'CardDescription' is defined but never used  @typescript-eslint/no-unused-vars
+   43:3   warning  'Book' is defined but never used             @typescript-eslint/no-unused-vars
+   70:28  error    Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  108:52  error    Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  172:19  error    Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  202:19  error    Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  218:19  error    Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  254:19  error    Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  270:19  error    Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  286:32  error    Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  291:19  error    Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  296:39  error    Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  437:74  error    Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  551:69  error    Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  561:74  error    Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+
+/Users/emre/Documents/src/next/nootle/src/app/page.tsx
+   4:8   warning  'Link' is defined but never used          @typescript-eslint/no-unused-vars
+   5:26  warning  'Profile' is defined but never used       @typescript-eslint/no-unused-vars
+  94:19  error    Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/emre/Documents/src/next/nootle/src/app/profile/page.tsx
+    4:14  warning  'Profile' is defined but never used                              @typescript-eslint/no-unused-vars
+   79:19  error    Unexpected any. Specify a different type                         @typescript-eslint/no-explicit-any
+  190:30  error    `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+
+/Users/emre/Documents/src/next/nootle/src/app/sync/page.tsx
+    9:10  warning  'Label' is defined but never used         @typescript-eslint/no-unused-vars
+   24:3   warning  'QrCode' is defined but never used        @typescript-eslint/no-unused-vars
+   40:26  error    Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  125:28  error    Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/emre/Documents/src/next/nootle/src/app/timer/page.tsx
+   24:10  warning  'Progress' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  @typescript-eslint/no-unused-vars
+   63:9   warning  'totalDuration' is assigned a value but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    @typescript-eslint/no-unused-vars
+  117:15  error    Error: Cannot access variable before it is declared
+
+`handleCompleteTimer` is accessed before it is declared, which prevents the earlier access from updating when this value changes over time.
+
+/Users/emre/Documents/src/next/nootle/src/app/timer/page.tsx:117:15
+  115 |           } else {
+  116 |             if (prev <= 1) {
+> 117 |               handleCompleteTimer(activeTimer);
+      |               ^^^^^^^^^^^^^^^^^^^ `handleCompleteTimer` accessed before it is declared
+  118 |               return 0;
+  119 |             }
+  120 |             return prev - 1;
+
+/Users/emre/Documents/src/next/nootle/src/app/timer/page.tsx:189:3
+  187 |   };
+  188 |
+> 189 |   const handleCompleteTimer = async (at: ActiveTimer) => {
+      |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 190 |     if (intervalRef.current) clearInterval(intervalRef.current);
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 191 |
+      …
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 201 |     }
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 202 |   };
+      | ^^^^^ `handleCompleteTimer` is declared here
+  203 |
+  204 |   const saveTimeLog = async (durationSecs: number) => {
+  205 |     const data: Partial<TimerSession> = {  react-hooks/immutability
+  129:6   warning  React Hook useEffect has a missing dependency: 'handleCompleteTimer'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                react-hooks/exhaustive-deps
+  184:14  warning  'err' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       @typescript-eslint/no-unused-vars
+
+/Users/emre/Documents/src/next/nootle/src/app/todos/page.tsx
+   60:28  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  106:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/emre/Documents/src/next/nootle/src/components/TipTapEditor.tsx
+  46:40  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/emre/Documents/src/next/nootle/src/components/app-sidebar.tsx
+  38:9   warning  'router' is assigned a value but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           @typescript-eslint/no-unused-vars
+  40:11  warning  'state' is assigned a value but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            @typescript-eslint/no-unused-vars
+  44:5   error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/Users/emre/Documents/src/next/nootle/src/components/app-sidebar.tsx:44:5
+  42 |
+  43 |   useEffect(() => {
+> 44 |     setIsClient(true);
+     |     ^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  45 |   }, []);
+  46 |
+  47 |   if (!isClient || !profile) {  react-hooks/set-state-in-effect
+
+/Users/emre/Documents/src/next/nootle/src/components/onboarding-guide.tsx
+  13:5   error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/Users/emre/Documents/src/next/nootle/src/components/onboarding-guide.tsx:13:5
+  11 |
+  12 |   useEffect(() => {
+> 13 |     setMounted(true);
+     |     ^^^^^^^^^^ Avoid calling setState() directly within an effect
+  14 |     // Only run tour once, checking localstorage. And only if user is logged in (handled by root layout rendering).
+  15 |     const guided = localStorage.getItem("nootle_tour_completed");
+  16 |  react-hooks/set-state-in-effect
+  36:38  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       react/no-unescaped-entities
+  85:51  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       react/no-unescaped-entities
+  98:31  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       react/no-unescaped-entities
+  98:36  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       react/no-unescaped-entities
+  98:41  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       react/no-unescaped-entities
+  98:50  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       react/no-unescaped-entities
+
+/Users/emre/Documents/src/next/nootle/src/components/ui/sidebar.tsx
+  611:26  error  Error: Cannot call impure function during render
+
+`Math.random` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+/Users/emre/Documents/src/next/nootle/src/components/ui/sidebar.tsx:611:26
+  609 |   // Random width between 50 to 90%.
+  610 |   const width = React.useMemo(() => {
+> 611 |     return `${Math.floor(Math.random() * 40) + 50}%`
+      |                          ^^^^^^^^^^^^^ Cannot call impure function
+  612 |   }, [])
+  613 |
+  614 |   return (  react-hooks/purity
+
+/Users/emre/Documents/src/next/nootle/src/lib/db.ts
+  126:43  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+✖ 65 problems (47 errors, 18 warnings)
+
+error: script "lint" exited with code 1
