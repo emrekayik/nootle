@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { pb } from "@/lib/pb";
+import { useState, useEffect } from "react";
+import { db, generateId, Notebook, Note } from "@/lib/db";
 import { useRouter } from "next/navigation";
+import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,62 +52,60 @@ import {
 import { toast } from "sonner";
 import { TipTapEditor } from "@/components/TipTapEditor";
 
-type Notebook = {
-  id: string;
-  title: string;
-  color: string;
-  user: string;
-  category?: string;
-  expand?: {
-    category?: {
-      id: string;
-      name: string;
-      color?: string;
-    };
-  };
-  created: string;
-  updated: string;
-};
-
-type Note = {
-  id: string;
-  title: string;
-  content: string;
-  notebook: string;
-  is_favorite: boolean;
-  date?: string;
-  user: string;
-  category?: string;
-  expand?: {
-    category?: {
-      id: string;
-      name: string;
-      color?: string;
-    };
-  };
-  created: string;
-  updated: string;
-};
-
-type Category = {
-  id: string;
-  name: string;
-  color?: string;
-};
-
 export default function NotebooksPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
 
-  // Data States
-  const [notebooks, setNotebooks] = useState<Notebook[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const rawNotebooks = useLiveQuery(
+    () => db.notebooks.orderBy("created").reverse().toArray(),
+    [],
+  );
+  const rawCategories = useLiveQuery(() => db.categories.toArray(), []);
+
+  const categoriesMap =
+    rawCategories?.reduce(
+      (acc, cat) => {
+        acc[cat.id] = cat;
+        return acc;
+      },
+      {} as Record<string, any>,
+    ) || {};
+
+  const notebooks =
+    rawNotebooks?.map((nb) => ({
+      ...nb,
+      expand: {
+        category: nb.categoryId ? categoriesMap[nb.categoryId] : undefined,
+      },
+    })) || undefined;
+
   const [selectedNotebookId, setSelectedNotebookId] = useState<string | null>(
     null,
   );
 
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [selectedNote, setSelectedNote] = useState<Note | null>(null);
+  const rawNotes = useLiveQuery(async () => {
+    if (!selectedNotebookId) return [];
+    const n = await db.notes
+      .where("notebookId")
+      .equals(selectedNotebookId)
+      .toArray();
+    // Sort logic: is_favorite first, then by created desc
+    return n.sort((a, b) => {
+      if (a.is_favorite === b.is_favorite) {
+        return new Date(b.created).getTime() - new Date(a.created).getTime();
+      }
+      return a.is_favorite ? -1 : 1;
+    });
+  }, [selectedNotebookId]);
+
+  const notes =
+    rawNotes?.map((n) => ({
+      ...n,
+      expand: {
+        category: n.categoryId ? categoriesMap[n.categoryId] : undefined,
+      },
+    })) || [];
+
+  const [selectedNote, setSelectedNote] = useState<any | null>(null);
 
   // Form States - Notebook
   const [isNotebookDialogOpen, setIsNotebookDialogOpen] = useState(false);
@@ -125,130 +124,96 @@ export default function NotebooksPage() {
   const [editDate, setEditDate] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  const fetchNotebooks = async () => {
-    try {
-      const records = await pb.collection("notebooks").getFullList<Notebook>({
-        sort: "-created",
-        expand: "category",
-        requestKey: null,
-      });
-      setNotebooks(records);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const fetchNotes = async (notebookId: string) => {
-    try {
-      const records = await pb.collection("notes").getFullList<Note>({
-        filter: `notebook = "${notebookId}"`,
-        sort: "-is_favorite,-created",
-        expand: "category",
-        requestKey: null,
-      });
-      setNotes(records);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  useEffect(() => {
-    if (!pb.authStore.isValid) {
-      router.push("/");
-      return;
-    }
-
-    const loadInitial = async () => {
-      try {
-        const cats = await pb
-          .collection("categories")
-          .getFullList<Category>({ sort: "name", requestKey: null });
-        setCategories(cats);
-      } catch (err) {
-        console.error("Categories fetch error", err);
-      }
-      Promise.all([fetchNotebooks()]).finally(() => setLoading(false));
-    };
-
-    loadInitial();
-
-    // Optional Realtime
-    pb.collection("notebooks").subscribe("*", function () {
-      fetchNotebooks();
-    });
-    return () => {
-      pb.collection("notebooks").unsubscribe("*");
-    };
-  }, [router]);
-
-  useEffect(() => {
-    if (selectedNotebookId) {
-      fetchNotes(selectedNotebookId);
-      // Let's also do a targeted subscription for notes
-      pb.collection("notes").subscribe("*", function () {
-        fetchNotes(selectedNotebookId);
-      });
-      return () => {
-        pb.collection("notes").unsubscribe("*");
-      };
-    } else {
-      setNotes([]);
-      setSelectedNote(null);
-    }
-  }, [selectedNotebookId]);
-
-  // Handle Note Selection
   useEffect(() => {
     if (selectedNote) {
       setEditTitle(selectedNote.title);
       setEditContent(selectedNote.content);
-      // slice(0,10) to get YYYY-MM-DD for standard html date input if present
-      setEditDate(selectedNote.date ? selectedNote.date.slice(0, 10) : "");
+      setEditDate(
+        selectedNote.date
+          ? new Date(selectedNote.date).toISOString().split("T")[0]
+          : "",
+      );
+    } else {
+      setEditTitle("");
+      setEditContent("");
+      setEditDate("");
     }
   }, [selectedNote]);
+
+  // Deselect note if notebook changes
+  useEffect(() => {
+    setSelectedNote(null);
+  }, [selectedNotebookId]);
 
   const handleCreateNotebook = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newNbTitle.trim()) return;
 
     try {
-      const data: Record<string, any> = {
-        title: newNbTitle,
+      const data: Partial<Notebook> = {
+        id: generateId(),
+        title: newNbTitle.trim(),
         color: newNbColor,
-        user: pb.authStore.model?.id,
+        created: new Date().toISOString(),
+        updated: new Date().toISOString(),
       };
+
       if (newNbCategory !== "none") {
-        data.category = newNbCategory;
+        data.categoryId = newNbCategory;
       }
-      const newNb = await pb.collection("notebooks").create<Notebook>(data);
+
+      await db.notebooks.add(data as Notebook);
+
       setNewNbTitle("");
       setNewNbColor("#3b82f6");
       setNewNbCategory("none");
       setIsNotebookDialogOpen(false);
-      setSelectedNotebookId(newNb.id);
-      toast.success("Notebook created");
+      toast.success("Notebook created!");
     } catch (err: any) {
-      toast.error(err.message || "Failed to create notebook");
+      console.error(err);
+      toast.error(err.message || "Failed to create notebook.");
     }
   };
 
   const handleDeleteNotebook = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm("Are you sure? All notes inside will be lost.")) return;
+    if (
+      !window.confirm(
+        "Are you sure you want to delete this notebook and ALL its notes?",
+      )
+    )
+      return;
+
     try {
-      await pb.collection("notebooks").delete(id);
-      if (selectedNotebookId === id) setSelectedNotebookId(null);
+      await db.notebooks.delete(id);
+
+      // Delete cascade relations
+      const notesToDelete = await db.notes
+        .where("notebookId")
+        .equals(id)
+        .primaryKeys();
+      await db.notes.bulkDelete(notesToDelete);
+
+      if (selectedNotebookId === id) {
+        setSelectedNotebookId(null);
+        setSelectedNote(null);
+      }
       toast.success("Notebook deleted");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      toast.error("Failed to delete notebook");
     }
   };
 
   const handleRenameNotebook = async (id: string, currentTitle: string) => {
-    const newTitle = prompt("Enter new notebook name:", currentTitle);
-    if (!newTitle || !newTitle.trim() || newTitle === currentTitle) return;
+    const freshTitle = prompt("Enter new notebook name:", currentTitle);
+    if (!freshTitle || !freshTitle.trim() || freshTitle === currentTitle)
+      return;
     try {
-      await pb.collection("notebooks").update(id, { title: newTitle.trim() });
+      await db.notebooks.update(id, {
+        title: freshTitle.trim(),
+        updated: new Date().toISOString(),
+      });
       toast.success("Notebook renamed");
     } catch (err: any) {
       toast.error(err.message || "Failed to rename notebook");
@@ -257,77 +222,70 @@ export default function NotebooksPage() {
 
   const handleCreateNote = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedNotebookId || !newNoteTitle.trim()) return;
+    if (!newNoteTitle.trim() || !selectedNotebookId) return;
 
     try {
-      const data: Record<string, any> = {
-        title: newNoteTitle,
+      const data: Partial<Note> = {
+        id: generateId(),
+        title: newNoteTitle.trim(),
         content: "",
+        notebookId: selectedNotebookId,
         is_favorite: false,
-        notebook: selectedNotebookId,
-        user: pb.authStore.model?.id,
+        created: new Date().toISOString(),
+        updated: new Date().toISOString(),
+        date: "",
       };
+
       if (newNoteCategory !== "none") {
-        data.category = newNoteCategory;
+        data.categoryId = newNoteCategory;
       }
-      const newNote = await pb.collection("notes").create<Note>(data);
+
+      const freshId = await db.notes.add(data as Note);
+      const newlyCreatedNote = await db.notes.get(freshId as string);
+
+      if (newlyCreatedNote) {
+        setSelectedNote(newlyCreatedNote);
+      }
+
       setNewNoteTitle("");
       setNewNoteCategory("none");
       setIsNoteDialogOpen(false);
-      setSelectedNote(newNote);
-      toast.success("Note created");
+      toast.success("Note created!");
     } catch (err: any) {
-      toast.error(err.message || "Failed to create note");
-    }
-  };
-
-  const handleSaveNoteContent = async () => {
-    if (!selectedNote) return;
-    setIsSaving(true);
-    try {
-      await pb.collection("notes").update(selectedNote.id, {
-        title: editTitle,
-        content: editContent,
-        date: editDate ? new Date(editDate).toISOString() : null,
-      });
-      // The local selected note will be updated via real-time subscription or a refetch
-      toast.success("Note saved");
-    } catch (err: any) {
-      toast.error(err.message || "Failed to save note");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const toggleFavorite = async (note: Note, e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      await pb.collection("notes").update(note.id, {
-        is_favorite: !note.is_favorite,
-      });
-    } catch (err) {
       console.error(err);
+      toast.error(err.message || "Failed to create note.");
     }
   };
 
   const handleDeleteNote = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!window.confirm("Delete this note?")) return;
+
     try {
-      await pb.collection("notes").delete(id);
-      if (selectedNote?.id === id) setSelectedNote(null);
+      await db.notes.delete(id);
+      if (selectedNote?.id === id) {
+        setSelectedNote(null);
+      }
       toast.success("Note deleted");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      toast.error("Failed to delete note");
     }
   };
 
   const handleRenameNote = async (id: string, currentTitle: string) => {
-    const newTitle = prompt("Enter new note title:", currentTitle);
-    if (!newTitle || !newTitle.trim() || newTitle === currentTitle) return;
+    const freshTitle = prompt("Enter new note title:", currentTitle);
+    if (!freshTitle || !freshTitle.trim() || freshTitle === currentTitle)
+      return;
     try {
-      await pb.collection("notes").update(id, { title: newTitle.trim() });
-      if (selectedNote?.id === id) {
-        setEditTitle(newTitle.trim());
+      await db.notes.update(id, {
+        title: freshTitle.trim(),
+        updated: new Date().toISOString(),
+      });
+      if (selectedNote && selectedNote.id === id) {
+        setSelectedNote((prev: any) =>
+          prev ? { ...prev, title: freshTitle.trim() } : null,
+        );
       }
       toast.success("Note renamed");
     } catch (err: any) {
@@ -335,7 +293,44 @@ export default function NotebooksPage() {
     }
   };
 
-  if (loading) {
+  const toggleFavorite = async (note: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await db.notes.update(note.id, {
+        is_favorite: !note.is_favorite,
+        updated: new Date().toISOString(),
+      });
+      if (selectedNote?.id === note.id) {
+        setSelectedNote({ ...selectedNote, is_favorite: !note.is_favorite });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSaveNoteContent = async () => {
+    if (!selectedNote) return;
+    setIsSaving(true);
+    try {
+      const d = {
+        title: editTitle.trim() || "Untitled Note",
+        content: editContent,
+        date: editDate ? new Date(editDate).toISOString() : "",
+        updated: new Date().toISOString(),
+      };
+
+      await db.notes.update(selectedNote.id, d);
+      setSelectedNote({ ...selectedNote, ...d });
+      toast.success("Note fully saved");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to fully save note");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (notebooks === undefined || rawCategories === undefined) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -405,25 +400,25 @@ export default function NotebooksPage() {
                                     }
                                   : undefined
                               }
+                              className="text-[10px] px-1 py-0 h-4"
                               variant={
                                 nb.expand.category.color
                                   ? "default"
                                   : "secondary"
                               }
-                              className="ml-2 text-[10px] px-1 py-0 h-4"
                             >
                               {nb.expand.category.name}
                             </Badge>
                           )}
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 opacity-0 group-hover:opacity-100 shrink-0"
+                        <button
                           onClick={(e) => handleDeleteNotebook(nb.id, e)}
+                          className={`shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ${
+                            selectedNotebookId === nb.id ? "opacity-100" : ""
+                          }`}
                         >
-                          <Trash2 className="h-3 w-3 text-red-500" />
-                        </Button>
+                          <Trash2 className="w-4 h-4 text-red-500 hover:text-red-700" />
+                        </button>
                       </div>
                     </ContextMenuTrigger>
                     <ContextMenuContent className="w-48">
@@ -435,8 +430,9 @@ export default function NotebooksPage() {
                         onClick={() => handleRenameNotebook(nb.id, nb.title)}
                         className="cursor-pointer gap-2"
                       >
-                        <PenTool className="w-4 h-4" /> Rename
+                        <PenTool className="w-4 h-4" /> Rename Notebook
                       </ContextMenuItem>
+                      <ContextMenuSeparator />
                       <ContextMenuItem
                         onClick={(e) => handleDeleteNotebook(nb.id, e as any)}
                         className="cursor-pointer gap-2 text-red-500 focus:text-red-500"
@@ -602,25 +598,28 @@ export default function NotebooksPage() {
                       className="shrink-0 gap-2 h-9"
                     >
                       {isSaving ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
-                        <Save className="w-4 h-4" />
+                        <Save className="h-4 w-4" />
                       )}
-                      Save
+                      Save Note
                     </Button>
                   </div>
                 </CardHeader>
-                <div className="flex-1 flex flex-col p-0 min-h-0 bg-background/50">
+                <div className="flex-1 overflow-hidden relative">
                   <TipTapEditor
                     value={editContent}
-                    onChange={(val) => setEditContent(val)}
+                    onChange={(html: string) => {
+                      setEditContent(html);
+                      // Optionally auto-save occasionally
+                    }}
                   />
                 </div>
               </>
             ) : (
-              <div className="flex flex-1 flex-col items-center justify-center text-muted-foreground space-y-4">
-                <StickyNote className="w-12 h-12 opacity-20" />
-                <p>Select a note or create a new one.</p>
+              <div className="flex flex-col items-center justify-center flex-1 text-muted-foreground">
+                <StickyNote className="w-16 h-16 mb-4 opacity-20" />
+                <p>Select a note or create a new one to start writing.</p>
               </div>
             )}
           </Card>
@@ -628,53 +627,49 @@ export default function NotebooksPage() {
       </div>
 
       {/* D I A L O G S */}
+      {/* Notebook Dialog */}
       <Dialog
         open={isNotebookDialogOpen}
         onOpenChange={setIsNotebookDialogOpen}
       >
-        <DialogContent className="sm:max-w-[400px]">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create Notebook</DialogTitle>
-            <DialogDescription>
-              Add a new collection for your notes.
-            </DialogDescription>
+            <DialogTitle>Create New Notebook</DialogTitle>
+            <DialogDescription>Group related notes together.</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleCreateNotebook} className="space-y-4 py-4">
+          <form onSubmit={handleCreateNotebook} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="nbTitle">Title</Label>
+              <Label>Notebook Title</Label>
               <Input
-                id="nbTitle"
+                placeholder="Work Project XYZ"
                 value={newNbTitle}
                 onChange={(e) => setNewNbTitle(e.target.value)}
-                placeholder="Work, Personal, Ideas..."
                 required
-                autoFocus
               />
             </div>
-            <div className="space-y-2 flex flex-col">
-              <Label htmlFor="nbColor">Color (Optional)</Label>
+            <div className="space-y-2">
+              <Label>Theme Color</Label>
               <div className="flex items-center gap-4">
                 <input
                   type="color"
-                  id="nbColor"
                   value={newNbColor}
                   onChange={(e) => setNewNbColor(e.target.value)}
-                  className="w-12 h-12 p-1 rounded cursor-pointer border bg-background"
+                  className="w-10 h-10 p-1 rounded cursor-pointer border bg-background"
                 />
-                <span className="text-sm text-muted-foreground">
+                <span className="text-sm text-muted-foreground font-mono">
                   {newNbColor}
                 </span>
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Category</Label>
+              <Label>Category (Optional)</Label>
               <Select value={newNbCategory} onValueChange={setNewNbCategory}>
                 <SelectTrigger>
                   <SelectValue placeholder="No Category" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">None</SelectItem>
-                  {categories.map((c) => (
+                  {rawCategories.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       {c.name}
                     </SelectItem>
@@ -682,35 +677,39 @@ export default function NotebooksPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex justify-end pt-4">
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => setIsNotebookDialogOpen(false)}
+              >
+                Cancel
+              </Button>
               <Button type="submit">Create</Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
 
+      {/* Note Dialog */}
       <Dialog open={isNoteDialogOpen} onOpenChange={setIsNoteDialogOpen}>
-        <DialogContent className="sm:max-w-[400px]">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create Note</DialogTitle>
-            <DialogDescription>
-              Add a new note to the selected notebook.
-            </DialogDescription>
+            <DialogTitle>Create New Note</DialogTitle>
+            <DialogDescription>Write down your thoughts.</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleCreateNote} className="space-y-4 py-4">
+          <form onSubmit={handleCreateNote} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="noteTitle">Title</Label>
+              <Label>Note Title</Label>
               <Input
-                id="noteTitle"
+                placeholder="Meeting Notes"
                 value={newNoteTitle}
                 onChange={(e) => setNewNoteTitle(e.target.value)}
-                placeholder="Note title..."
                 required
-                autoFocus
               />
             </div>
             <div className="space-y-2">
-              <Label>Category</Label>
+              <Label>Category (Optional)</Label>
               <Select
                 value={newNoteCategory}
                 onValueChange={setNewNoteCategory}
@@ -720,7 +719,7 @@ export default function NotebooksPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">None</SelectItem>
-                  {categories.map((c) => (
+                  {rawCategories.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       {c.name}
                     </SelectItem>
@@ -728,8 +727,15 @@ export default function NotebooksPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex justify-end pt-4">
-              <Button type="submit">Create</Button>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => setIsNoteDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit">Create Note</Button>
             </div>
           </form>
         </DialogContent>

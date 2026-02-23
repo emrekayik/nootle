@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { pb } from "@/lib/pb";
+import { useState } from "react";
+import { db, generateId, Todo } from "@/lib/db";
 import { useRouter } from "next/navigation";
+import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,94 +41,38 @@ import {
 } from "@/components/ui/context-menu";
 import { Trash2, PenTool, CheckCircle, Circle } from "lucide-react";
 
-type Todo = {
-  id: string;
-  is_completed: boolean;
-  task: string;
-  priority: string;
-  due_date: string;
-  note_ref?: string;
-  category?: string;
-  expand?: {
-    category?: {
-      id: string;
-      name: string;
-      color?: string;
-    };
-  };
-  created: string;
-  updated: string;
-};
-
-type Category = {
-  id: string;
-  name: string;
-  color?: string;
-};
-
 export default function TodosPage() {
   const router = useRouter();
-  const [todos, setTodos] = useState<Todo[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  const rawTodos = useLiveQuery(
+    () => db.todos.orderBy("created").reverse().toArray(),
+    [],
+  );
+  const rawCategories = useLiveQuery(() => db.categories.toArray(), []);
+
+  // Map to safely extract expand properties locally (replacement for pb expand)
+  const categoriesMap =
+    rawCategories?.reduce(
+      (acc, cat) => {
+        acc[cat.id] = cat;
+        return acc;
+      },
+      {} as Record<string, any>,
+    ) || {};
+
+  const todos =
+    rawTodos?.map((todo) => ({
+      ...todo,
+      expand: {
+        category: todo.categoryId ? categoriesMap[todo.categoryId] : undefined,
+      },
+    })) || undefined;
 
   const [newTask, setNewTask] = useState("");
   const [newPriority, setNewPriority] = useState("low");
   const [newDueDate, setNewDueDate] = useState("");
   const [newCategory, setNewCategory] = useState("none");
-  const [categories, setCategories] = useState<Category[]>([]);
   const [error, setError] = useState("");
-
-  const fetchTodos = async () => {
-    try {
-      const records = await pb.collection("todos").getFullList<Todo>({
-        sort: "-created",
-        expand: "category",
-        requestKey: null,
-      });
-      setTodos(records);
-    } catch (err) {
-      console.error("Failed to fetch todos", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!pb.authStore.isValid) {
-      router.push("/");
-      return;
-    }
-
-    const loadInitial = async () => {
-      try {
-        const cats = await pb
-          .collection("categories")
-          .getFullList<Category>({ sort: "name", requestKey: null });
-        setCategories(cats);
-      } catch (err) {
-        console.error("Categories fetch error", err);
-      }
-      fetchTodos();
-    };
-
-    loadInitial();
-
-    // Optionally set up real-time subscription
-    let unsubscribe: () => void;
-    pb.collection("todos")
-      .subscribe("*", function () {
-        fetchTodos();
-      })
-      .then((unsub) => {
-        unsubscribe = unsub;
-      });
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-      // fallback if component unmounts before promise resolves
-      pb.collection("todos").unsubscribe("*");
-    };
-  }, [router]);
 
   const handleAddTodo = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,40 +80,40 @@ export default function TodosPage() {
     setError("");
 
     try {
-      const data: Record<string, any> = {
+      const data: Partial<Todo> = {
+        id: generateId(),
         task: newTask,
         priority: newPriority,
         is_completed: false,
-        user: pb.authStore.model?.id,
+        created: new Date().toISOString(),
+        updated: new Date().toISOString(),
       };
 
       if (newCategory !== "none") {
-        data.category = newCategory;
+        data.categoryId = newCategory;
       }
 
       if (newDueDate) {
         data.due_date = new Date(newDueDate).toISOString();
       }
 
-      await pb.collection("todos").create(data);
+      await db.todos.add(data as Todo);
+
       setNewTask("");
       setNewPriority("low");
       setNewDueDate("");
       setNewCategory("none");
     } catch (err: any) {
       console.error(err);
-      setError(
-        err.response?.data
-          ? JSON.stringify(err.response.data)
-          : err.message || "Failed to create task.",
-      );
+      setError(err.message || "Failed to create task.");
     }
   };
 
   const toggleTodo = async (todo: Todo) => {
     try {
-      await pb.collection("todos").update(todo.id, {
+      await db.todos.update(todo.id, {
         is_completed: !todo.is_completed,
+        updated: new Date().toISOString(),
       });
     } catch (err) {
       console.error(err);
@@ -177,7 +122,7 @@ export default function TodosPage() {
 
   const deleteTodo = async (id: string) => {
     try {
-      await pb.collection("todos").delete(id);
+      await db.todos.delete(id);
     } catch (err) {
       console.error(err);
     }
@@ -188,7 +133,10 @@ export default function TodosPage() {
     if (!newTaskName || !newTaskName.trim() || newTaskName === currentTask)
       return;
     try {
-      await pb.collection("todos").update(id, { task: newTaskName.trim() });
+      await db.todos.update(id, {
+        task: newTaskName.trim(),
+        updated: new Date().toISOString(),
+      });
     } catch (err) {
       console.error(err);
     }
@@ -200,7 +148,7 @@ export default function TodosPage() {
     high: "bg-red-100 text-red-800 hover:bg-red-100/80",
   };
 
-  if (loading) {
+  if (todos === undefined || rawCategories === undefined) {
     return <div className="p-8 flex justify-center">Loading...</div>;
   }
 
@@ -255,7 +203,7 @@ export default function TodosPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">None</SelectItem>
-                    {categories.map((c) => (
+                    {rawCategories.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
                         {c.name}
                       </SelectItem>

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { pb } from "@/lib/pb";
+import { useState } from "react";
+import { db, generateId } from "@/lib/db";
 import { useRouter } from "next/navigation";
+import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,60 +34,18 @@ import {
 import { Trash2, Tags, Loader2, PenTool } from "lucide-react";
 import { toast } from "sonner";
 
-type Category = {
-  id: string;
-  name: string;
-  color: string;
-  user?: string;
-  created: string;
-  updated: string;
-};
-
 export default function CategoriesPage() {
   const router = useRouter();
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  // Connect categories query sorting by created desc
+  const categories = useLiveQuery(
+    () => db.categories.orderBy("created").reverse().toArray(),
+    [],
+  );
 
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState("#3b82f6");
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const fetchCategories = async () => {
-    try {
-      const records = await pb.collection("categories").getFullList<Category>({
-        sort: "-created",
-        requestKey: null,
-      });
-      setCategories(records);
-    } catch (err) {
-      console.error("Failed to fetch categories", err);
-      toast.error("Failed to load categories");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!pb.authStore.isValid) {
-      router.push("/");
-      return;
-    }
-    fetchCategories();
-
-    let unsubscribe: () => void;
-    pb.collection("categories")
-      .subscribe("*", function () {
-        fetchCategories();
-      })
-      .then((unsub) => {
-        unsubscribe = unsub;
-      });
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-      pb.collection("categories").unsubscribe("*");
-    };
-  }, [router]);
 
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,23 +53,19 @@ export default function CategoriesPage() {
     setIsSubmitting(true);
 
     try {
-      const data: Record<string, any> = {
-        name: newName,
+      await db.categories.add({
+        id: generateId(),
+        name: newName.trim(),
         color: newColor,
-        user: pb.authStore.model?.id,
-      };
-
-      await pb.collection("categories").create(data);
+        created: new Date().toISOString(),
+        updated: new Date().toISOString(),
+      });
       setNewName("");
       setNewColor("#3b82f6");
       toast.success("Category created successfully!");
     } catch (err: any) {
       console.error(err);
-      toast.error(
-        err.response?.data
-          ? JSON.stringify(err.response.data)
-          : err.message || "Failed to create category.",
-      );
+      toast.error(err.message || "Failed to create category.");
     } finally {
       setIsSubmitting(false);
     }
@@ -120,8 +75,27 @@ export default function CategoriesPage() {
     if (!window.confirm("Are you sure you want to delete this category?"))
       return;
     try {
-      await pb.collection("categories").delete(id);
-      toast.success("Category deleted");
+      await db.categories.delete(id);
+
+      // Also untag any associated entities using this deleted category
+      await db.todos
+        .where("categoryId")
+        .equals(id)
+        .modify({ categoryId: undefined });
+      await db.notebooks
+        .where("categoryId")
+        .equals(id)
+        .modify({ categoryId: undefined });
+      await db.notes
+        .where("categoryId")
+        .equals(id)
+        .modify({ categoryId: undefined });
+      await db.drawings
+        .where("categoryId")
+        .equals(id)
+        .modify({ categoryId: undefined });
+
+      toast.success("Category and its tags cleanly removed");
     } catch (err: any) {
       console.error(err);
       toast.error("Failed to delete category");
@@ -129,26 +103,33 @@ export default function CategoriesPage() {
   };
 
   const handleRenameCategory = async (id: string, currentName: string) => {
-    const newName = prompt("Enter new category name:", currentName);
-    if (!newName || !newName.trim() || newName === currentName) return;
+    const freshName = prompt("Enter new category name:", currentName);
+    if (!freshName || !freshName.trim() || freshName === currentName) return;
     try {
-      await pb.collection("categories").update(id, { name: newName.trim() });
+      await db.categories.update(id, {
+        name: freshName.trim(),
+        updated: new Date().toISOString(),
+      });
       toast.success("Category renamed");
     } catch (err: any) {
       toast.error(err.message || "Failed to rename category");
     }
   };
 
-  const handleChangeColor = async (id: string, newColor: string) => {
+  const handleChangeColor = async (id: string, freshColor: string) => {
     try {
-      await pb.collection("categories").update(id, { color: newColor });
+      await db.categories.update(id, {
+        color: freshColor,
+        updated: new Date().toISOString(),
+      });
       toast.success("Category color updated");
     } catch (err: any) {
       toast.error(err.message || "Failed to update category color");
     }
   };
 
-  if (loading) {
+  // Undefined means Dexie is still loading
+  if (categories === undefined) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />

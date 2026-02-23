@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { pb } from "@/lib/pb";
+import { useState } from "react";
+import { db, generateId, CalendarEvent } from "@/lib/db";
 import { useRouter } from "next/navigation";
+import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -34,49 +35,6 @@ import {
   CheckSquare,
 } from "lucide-react";
 
-type CalendarEvent = {
-  id: string;
-  title: string;
-  all_day: boolean;
-  description: string;
-  start: string;
-  end: string;
-  user: string;
-  category?: string;
-  expand?: {
-    category?: {
-      id: string;
-      name: string;
-      color?: string;
-    };
-  };
-  created: string;
-  updated: string;
-};
-
-type Category = {
-  id: string;
-  name: string;
-  color?: string;
-};
-
-type CalendarNote = {
-  id: string;
-  title: string;
-  date: string;
-  category?: string;
-  expand?: { category?: Category };
-};
-
-type CalendarTodo = {
-  id: string;
-  task: string;
-  is_completed: boolean;
-  due_date: string;
-  category?: string;
-  expand?: { category?: Category };
-};
-
 // Simple utility to get days in a month
 function getDaysInMonth(year: number, month: number) {
   return new Date(year, month + 1, 0).getDate();
@@ -88,10 +46,51 @@ function getFirstDayOfMonth(year: number, month: number) {
 
 export default function CalendarPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [notes, setNotes] = useState<CalendarNote[]>([]);
-  const [todos, setTodos] = useState<CalendarTodo[]>([]);
+
+  // Load local data
+  const rawCategories = useLiveQuery(() => db.categories.toArray(), []);
+  const rawEvents = useLiveQuery(() => db.events.toArray(), []);
+  const rawNotes = useLiveQuery(
+    () => db.notes.filter((n) => !!n.date).toArray(),
+    [],
+  );
+  const rawTodos = useLiveQuery(
+    () => db.todos.filter((t) => !!t.due_date).toArray(),
+    [],
+  );
+
+  const categoriesMap =
+    rawCategories?.reduce(
+      (acc, cat) => {
+        acc[cat.id] = cat;
+        return acc;
+      },
+      {} as Record<string, any>,
+    ) || {};
+
+  const events =
+    rawEvents?.map((e) => ({
+      ...e,
+      expand: {
+        category: e.categoryId ? categoriesMap[e.categoryId] : undefined,
+      },
+    })) || [];
+
+  const notes =
+    rawNotes?.map((n) => ({
+      ...n,
+      expand: {
+        category: n.categoryId ? categoriesMap[n.categoryId] : undefined,
+      },
+    })) || [];
+
+  const todos =
+    rawTodos?.map((t) => ({
+      ...t,
+      expand: {
+        category: t.categoryId ? categoriesMap[t.categoryId] : undefined,
+      },
+    })) || [];
 
   // Current viewed month state
   const today = new Date();
@@ -107,77 +106,9 @@ export default function CalendarPage() {
   const [newEventCategory, setNewEventCategory] = useState("none");
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [categories, setCategories] = useState<Category[]>([]);
 
   // Summary State
   const [summaryMode, setSummaryMode] = useState<"summary" | "add">("summary");
-
-  // Load events for the chosen month
-  const fetchEvents = async () => {
-    try {
-      // Find range: from start of month to end of month.
-      // But we just fetch all for this user to keep it simple, or filter by date
-      // PocketBase doesn't have a date range easily without raw SQL/filters in string format.
-      // E.g filter: `start >= '2022-01-01' && start <= '2022-01-31'`
-      // Since it's a calendar based on `start`.
-      const records = await pb.collection("events").getFullList<CalendarEvent>({
-        sort: "start",
-        expand: "category",
-        requestKey: null,
-      });
-      setEvents(records);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!pb.authStore.isValid) {
-      router.push("/");
-      return;
-    }
-
-    const loadInitial = async () => {
-      try {
-        const [cats, evs, nts, tds] = await Promise.all([
-          pb
-            .collection("categories")
-            .getFullList<Category>({ sort: "name", requestKey: null }),
-          pb.collection("events").getFullList<CalendarEvent>({
-            expand: "category",
-            requestKey: null,
-          }),
-          pb.collection("notes").getFullList<CalendarNote>({
-            filter: `date != ""`,
-            expand: "category",
-            requestKey: null,
-          }),
-          pb.collection("todos").getFullList<CalendarTodo>({
-            filter: `due_date != ""`,
-            expand: "category",
-            requestKey: null,
-          }),
-        ]);
-        setCategories(cats);
-        setEvents(evs);
-        setNotes(nts);
-        setTodos(tds);
-      } catch (err) {
-        console.error("Fetch error", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadInitial();
-
-    // In a complete implementation, handle subs for all 3 collections here.
-    return () => {
-      pb.collection("events").unsubscribe("*");
-    };
-  }, [router, currentYear, currentMonth]);
 
   const prevMonth = () => {
     if (currentMonth === 0) {
@@ -216,55 +147,35 @@ export default function CalendarPage() {
     setSaving(true);
     setFormError("");
     try {
-      const data: any = {
+      const startDateTimeStr = selectedDate.toISOString();
+      const endDateTimeStr = selectedDate.toISOString();
+
+      const data: Partial<CalendarEvent> = {
+        id: generateId(),
         title: newEventTitle,
-        description: newEventDesc,
         all_day: newEventAllDay,
-        user: pb.authStore.model?.id,
-        start:
-          selectedDate.toISOString().replace("T", " ").substring(0, 19) +
-          ".000Z",
-        end:
-          selectedDate.toISOString().replace("T", " ").substring(0, 19) +
-          ".000Z",
+        date: startDateTimeStr, // using date for unified DB schema logic
+        description: newEventDesc,
+        created: new Date().toISOString(),
+        updated: new Date().toISOString(),
       };
 
       if (newEventCategory !== "none") {
-        data.category = newEventCategory;
+        data.categoryId = newEventCategory;
       }
 
-      await pb.collection("events").create(data, { requestKey: null });
-      // update local
-      const newEv = await pb
-        .collection("events")
-        .getOne<CalendarEvent>(data.id || "", { expand: "category" })
-        .catch(() => null);
-      if (newEv) setEvents([...events, newEv]);
+      await db.events.add(data as CalendarEvent);
       setIsDialogOpen(false);
     } catch (err: any) {
       console.error(err);
       setFormError(err.message || "Failed to create event.");
     } finally {
-      // Lazy refresh
-      const evs = await pb
-        .collection("events")
-        .getFullList<CalendarEvent>({ expand: "category", requestKey: null });
-      setEvents(evs);
       setSaving(false);
       setSummaryMode("summary");
     }
   };
 
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      await pb.collection("events").delete(id);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  if (loading) {
+  if (rawCategories === undefined || rawEvents === undefined) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -327,7 +238,7 @@ export default function CalendarPage() {
             const dayNumber = i + 1;
             // Map events to this day
             const dayEvents = events.filter((ev) => {
-              const d = new Date(ev.start || ev.created);
+              const d = new Date(ev.date || ev.created);
               return (
                 d.getFullYear() === currentYear &&
                 d.getMonth() === currentMonth &&
@@ -406,7 +317,7 @@ export default function CalendarPage() {
                         className="text-[10px] leading-tight rounded px-1.5 py-0.5 truncate relative flex items-center justify-between group/nt"
                         style={{
                           backgroundColor: nt.expand?.category?.color
-                            ? `${nt.expand.category.color}33`
+                            ? `${nt.expand?.category?.color}33`
                             : "hsl(var(--secondary))",
                           color:
                             nt.expand?.category?.color ||
@@ -429,7 +340,7 @@ export default function CalendarPage() {
                         className={`text-[10px] leading-tight rounded px-1.5 py-0.5 truncate relative flex items-center justify-between group/td ${td.is_completed ? "line-through opacity-50" : ""}`}
                         style={{
                           backgroundColor: td.expand?.category?.color
-                            ? `${td.expand.category.color}15`
+                            ? `${td.expand?.category?.color}15`
                             : "hsl(var(--secondary))",
                           color:
                             td.expand?.category?.color ||
@@ -471,7 +382,6 @@ export default function CalendarPage() {
 
           {summaryMode === "summary" ? (
             <div className="space-y-4 py-4">
-              {/* Quick Summary Render here */}
               <div className="text-sm font-medium">
                 Click the button below to add a direct event here. Note that
                 Notes and Todos are added from their respective pages.
@@ -509,7 +419,7 @@ export default function CalendarPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">None</SelectItem>
-                    {categories.map((c) => (
+                    {rawCategories.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
                         {c.name}
                       </SelectItem>

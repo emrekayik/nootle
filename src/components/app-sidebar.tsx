@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { pb } from "@/lib/pb";
+import { db } from "@/lib/db";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
+import { useLiveQuery } from "dexie-react-hooks";
 import {
   Sidebar,
   SidebarContent,
@@ -29,27 +30,21 @@ import {
   Clock,
   Tags,
   PenTool,
+  RefreshCw,
 } from "lucide-react";
 
 export function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [user, setUser] = useState(pb.authStore.model);
   const [isClient, setIsClient] = useState(false);
-  const { state } = useSidebar();
+  const { state, setOpenMobile, isMobile } = useSidebar();
+  const profile = useLiveQuery(() => db.profiles.toCollection().first());
 
   useEffect(() => {
     setIsClient(true);
-    const unsub = pb.authStore.onChange((token, model) => {
-      setUser(model);
-    });
-
-    return () => {
-      unsub();
-    };
   }, []);
 
-  if (!isClient || !user) {
+  if (!isClient || !profile) {
     return null; // Don't render sidebar if not authenticated or not hydrated
   }
 
@@ -63,12 +58,12 @@ export function AppSidebar() {
     { title: "Categories", url: "/categories", icon: Tags },
   ];
 
-  const handleLogout = () => {
-    pb.authStore.clear();
-    router.push("/");
+  const handleLogout = async () => {
+    await db.delete(); // Clear entire database
+    window.location.href = "/";
   };
 
-  const avatarUrl = user.avatar ? pb.files.getURL(user, user.avatar) : "";
+  const avatarUrl = profile.avatar;
 
   return (
     <Sidebar collapsible="icon">
@@ -93,8 +88,15 @@ export function AppSidebar() {
             <SidebarMenu>
               {items.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={pathname === item.url}>
-                    <Link href={item.url}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={pathname === item.url}
+                    className={`tour-sidebar-${item.title.toLowerCase()}`}
+                  >
+                    <Link
+                      href={item.url}
+                      onClick={() => isMobile && setOpenMobile(false)}
+                    >
                       <item.icon className="w-4 h-4 shrink-0" />
                       <span>{item.title}</span>
                     </Link>
@@ -115,7 +117,7 @@ export function AppSidebar() {
             >
               <Avatar className="w-8 h-8 shrink-0 rounded-md">
                 {avatarUrl ? (
-                  <AvatarImage src={avatarUrl} alt={user.name} />
+                  <AvatarImage src={avatarUrl} alt={profile.name} />
                 ) : (
                   <AvatarFallback className="rounded-md">
                     <UserCircle2 className="w-4 h-4" />
@@ -124,17 +126,31 @@ export function AppSidebar() {
               </Avatar>
               <div className="flex flex-col text-sm truncate flex-1 leading-none">
                 <span className="font-semibold truncate">
-                  {user.name || "User"}
+                  {profile.name || "User"}
                 </span>
                 <span className="text-xs text-muted-foreground truncate">
-                  {user.email}
+                  {profile.email}
                 </span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={pathname === "/sync"}>
+              <Link
+                href="/sync"
+                onClick={() => isMobile && setOpenMobile(false)}
+              >
+                <RefreshCw className="w-4 h-4 shrink-0" />
+                <span>Sync Devices</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
             <SidebarMenuButton asChild isActive={pathname === "/profile"}>
-              <Link href="/profile">
+              <Link
+                href="/profile"
+                onClick={() => isMobile && setOpenMobile(false)}
+              >
                 <UserCircle2 className="w-4 h-4 shrink-0" />
                 <span>Profile</span>
               </Link>
@@ -146,7 +162,7 @@ export function AppSidebar() {
               className="text-red-500 hover:text-red-600 hover:bg-red-50 transition-colors"
             >
               <LogOut className="w-4 h-4 shrink-0" />
-              <span>Logout</span>
+              <span>Reset Data</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
