@@ -1,0 +1,31 @@
+name: nootle
+
+services:
+  nextjs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_POCKETBASE_URL=http://127.0.0.1:8090
+    depends_on:
+      - pocketbase
+    restart: always
+
+  pocketbase:
+    image: alpine:latest
+    command: >
+      sh -c '
+      apk add --no-cache unzip ca-certificates wget &&
+      wget -q https://github.com/pocketbase/pocketbase/releases/download/v0.36.5/pocketbase_0.36.5_linux_amd64.zip -O /tmp/pb.zip &&
+      unzip -q /tmp/pb.zip -d /pb/ &&
+      /pb/pocketbase serve --http=0.0.0.0:8090
+      '
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./pocketbase/pb_data:/pb/pb_data
+      - ./pocketbase/pb_migrations:/pb/pb_migrations
+    restart: always
