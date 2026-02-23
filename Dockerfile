@@ -6,7 +6,7 @@ WORKDIR /app
 # Install dependencies based on the preferred package manager
 COPY package.json ./
 # There is only bun.lock locally, so we fall back to npm install for simplicity
-RUN npm install
+RUN npm install --legacy-peer-deps
 
 # Rebuild the source code only when needed
 FROM node:20-alpine AS builder
